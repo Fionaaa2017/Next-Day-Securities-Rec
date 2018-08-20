@@ -1,0 +1,597 @@
+Option Explicit
+Dim iRowBook, iRowCly As Long
+
+
+Sub PullUSDSheet()
+Dim fd As FileDialog
+Dim ActionClicked As Boolean
+Dim ReportWb As Workbook
+Dim CadWb As Workbook
+Dim ws As Worksheet
+Dim CadSheet As Worksheet
+Dim wsSEG As Worksheet
+Dim FirstSegCP As Range
+
+Application.ScreenUpdating = False
+
+
+Set ReportWb = ThisWorkbook
+
+
+ 
+    
+ 'Last line = B61
+Call ClearLeftClypso
+Call FilterCalypsoReportUSD
+Call ReconclileUSD
+Call FormatSheetUSD
+Call ValidateSEGDataUSD
+ 
+Application.ScreenUpdating = True
+End Sub
+
+Sub FilterCalypsoReportUSD()
+Dim CalypsoList As Range
+Dim r As Range
+
+USD.Range("H2").Value = "MOVEMENT"
+USD.Range("I2").Value = "ACTION"
+USD.Range("J2").Value = "ADAPTIV CODE"
+USD.Range("K2").Value = "NOTIONAL"
+USD.Range("L2").Value = "CUSIP"
+
+Set CalypsoList = wsCalypso.Range("A2", wsCalypso.Range("A2").End(xlDown))
+
+For Each r In CalypsoList
+
+    If r.Offset(0, 3).Value = "OTC Agreements" _
+    And UCase(Left(r.Offset(0, 9), 2)) = "US" _
+    And r.Offset(0, 18).Value > r.Offset(0, 17).Value Then
+        If USD.Range("H3") = "" Then
+            If r.Offset(0, 4).Value = "Pay" Then
+                USD.Range("H3").Value = "DELIVER"
+            Else: USD.Range("H3").Value = "RECEIVE"
+            End If
+            
+            If r.Offset(0, 6).Value = "Return" Then
+            USD.Range("I3").Value = "RETURN"
+            Else
+            USD.Range("I3").Value = "DELIVER"
+            End If
+            
+                If r.Offset(0, 0).Value = "BMO Ireland, PLC" Then
+                    USD.Range("J3").Value = r.Offset(0, 1).Value & "BMOIreland"
+                Else:
+                    USD.Range("J3").Value = r.Offset(0, 1).Value
+                End If
+                USD.Range("K3").Value = r.Offset(0, 10).Value
+                USD.Range("L3").Value = r.Offset(0, 8).Value
+        Else:
+            If r.Offset(0, 4).Value = "Pay" Then
+                USD.Range("H2").End(xlDown).Offset(1, 0).Value = "DELIVER"
+            Else: USD.Range("H2").End(xlDown).Offset(1, 0).Value = "RECEIVE"
+            End If
+            
+             If r.Offset(0, 6).Value = "Return" Then
+                USD.Range("I2").End(xlDown).Offset(1, 0).Value = "RETURN"
+            Else
+                USD.Range("I2").End(xlDown).Offset(1, 0).Value = "DELIVER"
+            End If
+                 If r.Offset(0, 0).Value = "BMO Ireland, PLC" Then
+                        USD.Range("J2").End(xlDown).Offset(1, 0).Value = r.Offset(0, 1).Value & "BMOIreland"
+                Else:
+                        USD.Range("J2").End(xlDown).Offset(1, 0).Value = r.Offset(0, 1).Value
+                End If
+                USD.Range("K2").End(xlDown).Offset(1, 0).Value = r.Offset(0, 10).Value
+                USD.Range("L2").End(xlDown).Offset(1, 0).Value = r.Offset(0, 8).Value
+        End If
+    End If
+Next r
+
+If USD.Range("H3").Value = "" Then Exit Sub
+
+Call CaisseAdjustment
+
+End Sub
+
+
+Sub ReconclileUSD()
+Dim r As Range
+Dim c As Range
+Dim USDSheet As Range
+Dim Calypso As Range
+Dim WithErrors As Boolean
+Dim EntryFound As Boolean
+
+USD.Activate
+
+Set USDSheet = Range("D3:D61")
+Set Calypso = Range("J3", Range("J3").End(xlDown))
+
+USD.Range("N2").Value = "NOT FOUND ON LOG SHEET"
+USD.Range("N2:R2").MergeCells = True
+USD.Range("N2:R2").HorizontalAlignment = xlCenter
+USD.Range("T2").Value = "NOT FOUND ON REPORT"
+USD.Range("T2:X2").MergeCells = True
+USD.Range("T2:X2").HorizontalAlignment = xlCenter
+' Not Found on Report
+
+For Each r In USDSheet
+    EntryFound = False
+    If r.Value <> "" Then
+        For Each c In Calypso
+            If r.Value = c.Value _
+            And r.Offset(0, -1).Value = c.Offset(0, -1) _
+            And r.Offset(0, -2).Value = c.Offset(0, -2) _
+            And r.Offset(0, 1).Value = c.Offset(0, 1).Value _
+            And r.Offset(0, 2).Value = c.Offset(0, 2).Value Then
+                EntryFound = True
+            End If
+        Next c
+        If EntryFound = False Then
+            If Range("T3") = "" Then
+                Range("T3").Value = r.Offset(0, -2).Value
+                Range("U3").Value = r.Offset(0, -1).Value
+                Range("V3").Value = r.Value
+                Range("W3").Value = r.Offset(0, 1).Value
+                Range("X3").Value = r.Offset(0, 2).Value
+            Else:
+                Range("T2").End(xlDown).Offset(1, 0).Value = r.Offset(0, -2).Value
+                Range("T2").End(xlDown).Offset(0, 1).Value = r.Offset(0, -1).Value
+                Range("T2").End(xlDown).Offset(0, 2).Value = r.Value
+                Range("T2").End(xlDown).Offset(0, 3).Value = r.Offset(0, 1).Value
+                Range("T2").End(xlDown).Offset(0, 4).Value = r.Offset(0, 2).Value
+             End If
+        End If
+    End If
+Next r
+
+' Not Found on Cad Sheet
+
+For Each r In Calypso
+    EntryFound = False
+        For Each c In USDSheet
+            If r.Value = c.Value _
+            And r.Offset(0, -1).Value = c.Offset(0, -1) _
+            And r.Offset(0, -2).Value = c.Offset(0, -2) _
+            And r.Offset(0, 1).Value = c.Offset(0, 1).Value _
+            And r.Offset(0, 2).Value = c.Offset(0, 2).Value Then
+                EntryFound = True
+            End If
+        Next c
+        If EntryFound = False Then
+            If Range("N3") = "" Then
+                Range("N3").Value = r.Offset(0, -2).Value
+                Range("O3").Value = r.Offset(0, -1).Value
+                Range("P3").Value = r.Value
+                Range("Q3").Value = r.Offset(0, 1).Value
+                Range("R3").Value = r.Offset(0, 2).Value
+            Else:
+                Range("N2").End(xlDown).Offset(1, 0).Value = r.Offset(0, -2).Value
+                Range("N2").End(xlDown).Offset(0, 1).Value = r.Offset(0, -1).Value
+                Range("N2").End(xlDown).Offset(0, 2).Value = r.Value
+                Range("N2").End(xlDown).Offset(0, 3).Value = r.Offset(0, 1).Value
+                Range("N2").End(xlDown).Offset(0, 4).Value = r.Offset(0, 2).Value
+             End If
+        End If
+Next r
+
+End Sub
+
+
+Sub FormatSheetUSD()
+Dim TargetRange As Range
+Dim BorderIndex As Variant
+
+Range("A1:AJ1000").Interior.Color = rgbWhite
+Range("N2:R2").Interior.Color = 15261367
+Range("T2:X2").Interior.Color = 15261367
+Range("B2:F2").Interior.Color = 9420794
+Range("H2:L2").Interior.Color = 9420794
+
+Range("A1:AJ1000").Font.Name = "Times New Roman"
+USD.Cells.HorizontalAlignment = xlCenter
+USD.Cells.Columns.AutoFit
+
+USD.Range("E3:E1000").NumberFormat = "#,##0"
+USD.Range("K3:K1000").NumberFormat = "#,##0"
+USD.Range("Q3:Q1000").NumberFormat = "#,##0"
+USD.Range("W3:W1000").NumberFormat = "#,##0"
+
+Set TargetRange = Range("B2", Range("B1000").End(xlUp).Offset(0, 4))
+If Range("B3") = "" Then Set TargetRange = Range("B2:F2")
+
+   For Each BorderIndex In Array(xlEdgeTop, xlEdgeLeft, xlEdgeBottom, xlEdgeRight, xlInsideHorizontal, xlInsideVertical)
+      With TargetRange.Borders(BorderIndex)
+         .Weight = xlThin
+         .ColorIndex = xlAutomatic
+      End With
+   Next BorderIndex
+   
+Set TargetRange = Range("H2", Range("H1000").End(xlUp).Offset(0, 4))
+If Range("H3") = "" Then Set TargetRange = Range("H2:L2")
+
+   For Each BorderIndex In Array(xlEdgeTop, xlEdgeLeft, xlEdgeBottom, xlEdgeRight, xlInsideHorizontal, xlInsideVertical)
+      With TargetRange.Borders(BorderIndex)
+         .Weight = xlThin
+         .ColorIndex = xlAutomatic
+      End With
+   Next BorderIndex
+   
+Set TargetRange = Range("N2", Range("N1000").End(xlUp).Offset(0, 4))
+If Range("N3") = "" Then Set TargetRange = Range("N2:R2")
+
+   For Each BorderIndex In Array(xlEdgeTop, xlEdgeLeft, xlEdgeBottom, xlEdgeRight, xlInsideHorizontal, xlInsideVertical)
+      With TargetRange.Borders(BorderIndex)
+         .Weight = xlThin
+         .ColorIndex = xlAutomatic
+      End With
+   Next BorderIndex
+   
+Set TargetRange = Range("T2", Range("T1000").End(xlUp).Offset(0, 4))
+If Range("T3") = "" Then Set TargetRange = Range("T2:X2")
+
+   For Each BorderIndex In Array(xlEdgeTop, xlEdgeLeft, xlEdgeBottom, xlEdgeRight, xlInsideHorizontal, xlInsideVertical)
+      With TargetRange.Borders(BorderIndex)
+         .Weight = xlThin
+         .ColorIndex = xlAutomatic
+      End With
+   Next BorderIndex
+End Sub
+
+
+Sub ClearCalypsoSheet()
+wsCalypso.Cells.ClearContents
+wsCalypso.Cells.ClearFormats
+wsCalypso.Activate
+End Sub
+
+
+Sub CaisseAdjustment()
+Dim r As Range
+If Range("J3") <> "" Then
+    For Each r In USD.Range("J3", USD.Range("J2").End(xlDown))
+        If UCase(r.Value) = "CAISSELGY" Then
+            r.Value = "CAISSE"
+        End If
+    Next r
+End If
+End Sub
+
+
+Sub ClearUSD()
+
+USD.Cells.Clear
+
+End Sub
+
+Sub PullBookSheet()
+Dim wbCollat, wbMBS As Workbook
+Dim wsCollat, wsMBS, ws As Worksheet
+Dim strCollat, strMBS As String
+
+Dim RngC1, RngC2, RngC3, RngC4, r, Rng, c As Range
+Dim RngM1, RngM2, RngM3, RngM4 As Range
+Dim iRow, iRow1 As Long
+
+Call ClearRight
+
+USD.Range("AD2").Value = "MOVEMENT"
+USD.Range("AE2").Value = "ACTION"
+USD.Range("AF2").Value = "ADAPTIV CODE"
+USD.Range("AG2").Value = "NOTIONAL"
+USD.Range("AH2").Value = "CUSIP"
+
+Application.DisplayAlerts = False
+'Open workbooks
+
+strCollat = Application.GetOpenFilename(Title:="Please choose Collat File to open")
+Set wbCollat = Workbooks.Open(strCollat)
+
+strMBS = Application.GetOpenFilename(Title:="Please choose MBS file  to open")
+Set wbMBS = Workbooks.Open(strMBS)
+
+'transfer Data
+
+Set RngC1 = wbCollat.Sheets(1).Range("B13:B84")
+Set RngC2 = wbCollat.Sheets(1).Range("B88:B129")
+Set RngC3 = wbCollat.Sheets(1).Range("B133:B149")
+Set RngC4 = wbCollat.Sheets(1).Range("B153:B170")
+
+Set RngM1 = wbMBS.Sheets(1).Range("B14:B23")
+Set RngM2 = wbMBS.Sheets(1).Range("B28:B37")
+Set RngM3 = wbMBS.Sheets(1).Range("B42:B56")
+Set RngM4 = wbMBS.Sheets(1).Range("B61:B72")
+
+
+Dim iLastrow As Long
+Dim wb As Workbook
+Set wb = ThisWorkbook
+Set ws = wb.Sheets("USD Report")
+
+For Each r In RngC1
+ If r.Value <> "" And r <> "0" Then
+iLastrow = ws.Cells(1000, 32).End(xlUp).Row
+
+iRow = r.Offset(-1, 4).End(xlDown).Row
+'iRow = r.Offset(0, 1).End(xlDown).Row
+'iRow1 = r.Row
+'Set Rng = wbCollat.Sheets(1).Range(Cells(iRow1, 6), Cells(iRow, 6))
+'For Each c In Rng
+'    If c.Value <> "" And c.Value <> "0" Then
+'    iRow = c.Row
+'    End If
+'Next
+
+ws.Cells(iLastrow + 1, 32) = r
+ws.Cells(iLastrow + 1, 32).Offset(0, -2) = "DELIVER"
+ws.Cells(iLastrow + 1, 32).Offset(0, -1) = "DELIVER"
+ws.Cells(iLastrow + 1, 32).Offset(0, 1) = wbCollat.Sheets(1).Cells(iRow, 6)
+ws.Cells(iLastrow + 1, 32).Offset(0, 2) = wbCollat.Sheets(1).Cells(iRow, 7)
+End If
+Next
+
+For Each r In RngC2
+ If r.Value <> "" Then
+iLastrow = ws.Cells(1000, 32).End(xlUp).Row
+ws.Cells(iLastrow + 1, 32) = r
+ws.Cells(iLastrow + 1, 32).Offset(0, -2) = "RECEIVE"
+ws.Cells(iLastrow + 1, 32).Offset(0, -1) = "RETURN"
+ws.Cells(iLastrow + 1, 32).Offset(0, 1) = r.Offset(0, 1)
+ws.Cells(iLastrow + 1, 32).Offset(0, 2) = r.Offset(0, 3)
+End If
+Next
+
+For Each r In RngC3
+ If r.Value <> "" Then
+iLastrow = ws.Cells(1000, 32).End(xlUp).Row
+ws.Cells(iLastrow + 1, 32) = r
+ws.Cells(iLastrow + 1, 32).Offset(0, -2) = "RECEIVE"
+ws.Cells(iLastrow + 1, 32).Offset(0, -1) = "DELIVER"
+ws.Cells(iLastrow + 1, 32).Offset(0, 1) = r.Offset(0, 1)
+ws.Cells(iLastrow + 1, 32).Offset(0, 2) = r.Offset(0, 3)
+End If
+Next
+
+For Each r In RngC4
+ If r.Value <> "" Then
+iLastrow = ws.Cells(1000, 32).End(xlUp).Row
+ws.Cells(iLastrow + 1, 32) = r
+ws.Cells(iLastrow + 1, 32).Offset(0, -2) = "DELIVER"
+ws.Cells(iLastrow + 1, 32).Offset(0, -1) = "RETURN"
+ws.Cells(iLastrow + 1, 32).Offset(0, 1) = r.Offset(0, 1)
+ws.Cells(iLastrow + 1, 32).Offset(0, 2) = r.Offset(0, 3)
+End If
+Next
+'Transfer MBS
+
+For Each r In RngM1
+ If r.Value <> "" Then
+iLastrow = ws.Cells(1000, 32).End(xlUp).Row
+ws.Cells(iLastrow + 1, 32) = r
+ws.Cells(iLastrow + 1, 32).Offset(0, -2) = "DELIVER"
+ws.Cells(iLastrow + 1, 32).Offset(0, -1) = "DELIVER"
+ws.Cells(iLastrow + 1, 32).Offset(0, 1) = r.Offset(0, 1)
+ws.Cells(iLastrow + 1, 32).Offset(0, 2) = r.Offset(0, 3)
+End If
+Next
+
+For Each r In RngM2
+ If r.Value <> "" Then
+iLastrow = ws.Cells(1000, 32).End(xlUp).Row
+ws.Cells(iLastrow + 1, 32) = r
+ws.Cells(iLastrow + 1, 32).Offset(0, -2) = "RECEIVE"
+ws.Cells(iLastrow + 1, 32).Offset(0, -1) = "RETURN"
+ws.Cells(iLastrow + 1, 32).Offset(0, 1) = r.Offset(0, 1)
+ws.Cells(iLastrow + 1, 32).Offset(0, 2) = r.Offset(0, 3)
+End If
+Next
+
+For Each r In RngM3
+ If r.Value <> "" Then
+iLastrow = ws.Cells(1000, 32).End(xlUp).Row
+ws.Cells(iLastrow + 1, 32) = r
+ws.Cells(iLastrow + 1, 32).Offset(0, -2) = "RECEIVE"
+ws.Cells(iLastrow + 1, 32).Offset(0, -1) = "DELIVER"
+ws.Cells(iLastrow + 1, 32).Offset(0, 1) = r.Offset(0, 1)
+ws.Cells(iLastrow + 1, 32).Offset(0, 2) = r.Offset(0, 3)
+End If
+Next
+
+For Each r In RngM4
+ If r.Value <> "" Then
+iLastrow = ws.Cells(1000, 32).End(xlUp).Row
+ws.Cells(iLastrow + 1, 32) = r
+ws.Cells(iLastrow + 1, 32).Offset(0, -2) = "DELIVER"
+ws.Cells(iLastrow + 1, 32).Offset(0, -1) = "RETURN"
+ws.Cells(iLastrow + 1, 32).Offset(0, 1) = r.Offset(0, 1)
+ws.Cells(iLastrow + 1, 32).Offset(0, 2) = r.Offset(0, 3)
+End If
+Next
+wbCollat.Close
+wbMBS.Close
+
+Application.DisplayAlerts = True
+
+Call ReconclileCLYbook
+Call FormatBookSheet
+
+End Sub
+
+Sub ReconclileCLYbook()
+
+Dim r As Range
+Dim c As Range
+Dim BookSheet As Range
+Dim Calypso As Range
+Dim WithErrors As Boolean
+Dim EntryFound As Boolean
+Dim iLastrow As Long
+Dim Count As Long
+Dim m As String
+
+USD.Activate
+iLastrow = USD.Cells(1000, 32).End(xlUp).Row
+
+Set BookSheet = Range("AF3:AF" & iLastrow)
+Set Calypso = Range("J3", Range("J3").End(xlDown))
+
+iLastrow = USD.Cells(1000, 32).End(xlUp).Row
+iRowBook = iLastrow + 5
+USD.Cells(iLastrow + 5, 31) = "NOT FOUND ON BOOKING SHEET"
+USD.Range("AD" & iLastrow + 5 & ":" & "AH" & iLastrow + 5).MergeCells = True
+USD.Range("AD" & iLastrow + 5 & ":" & "AH" & iLastrow + 5).HorizontalAlignment = xlCenter
+
+
+' Not Found on Cad Sheet
+
+For Each r In Calypso
+    EntryFound = False
+        For Each c In BookSheet
+            If r.Offset(0, -1).Value = c.Offset(0, -1) _
+            And r.Offset(0, -2).Value = c.Offset(0, -2) _
+            And r.Offset(0, 1).Value = c.Offset(0, 1).Value _
+            And r.Offset(0, 2).Value = c.Offset(0, 2).Value Then
+                If r.Value = c.Value Then
+                EntryFound = True
+                Else
+                    Count = Application.WorksheetFunction.CountIf(Adaptiv.Columns(1), r)
+                        If Count = 0 Then
+                        m = Replace(r.Value, "LGY", "")
+                            If m = c.Value Then
+                                EntryFound = True
+                            End If
+                        End If
+                End If
+            End If
+            
+        Next c
+        If EntryFound = False Then
+            If Range("AD" & iLastrow + 6) = "" Then
+                Range("AD" & iLastrow + 6).Value = r.Offset(0, -2).Value
+                Range("AE" & iLastrow + 6).Value = r.Offset(0, -1).Value
+                Range("AF" & iLastrow + 6).Value = r.Value
+                Range("AG" & iLastrow + 6).Value = r.Offset(0, 1).Value
+                Range("AH" & iLastrow + 6).Value = r.Offset(0, 2).Value
+            Else:
+                Range("AD" & iLastrow + 5).End(xlDown).Offset(1, 0).Value = r.Offset(0, -2).Value
+                Range("AD" & iLastrow + 5).End(xlDown).Offset(0, 1).Value = r.Offset(0, -1).Value
+                Range("AD" & iLastrow + 5).End(xlDown).Offset(0, 2).Value = r.Value
+                Range("AD" & iLastrow + 5).End(xlDown).Offset(0, 3).Value = r.Offset(0, 1).Value
+                Range("AD" & iLastrow + 5).End(xlDown).Offset(0, 4).Value = r.Offset(0, 2).Value
+             End If
+        End If
+Next r
+
+' Not Found on Report
+iLastrow = USD.Cells(1000, 32).End(xlUp).Row
+iRowCly = iLastrow + 5
+USD.Cells(iLastrow + 5, 31).Value = "NOT FOUND ON CALYPSO REPORT"
+USD.Range("AD" & iLastrow + 5 & ":" & "AH" & iLastrow + 5).MergeCells = True
+USD.Range("AD" & iLastrow + 5 & ":" & "AH" & iLastrow + 5).HorizontalAlignment = xlCenter
+
+For Each r In BookSheet
+    EntryFound = False
+    If r.Value <> "" Then
+        For Each c In Calypso
+            If r.Offset(0, -1).Value = c.Offset(0, -1) _
+            And r.Offset(0, -2).Value = c.Offset(0, -2) _
+            And r.Offset(0, 1).Value = c.Offset(0, 1).Value _
+            And r.Offset(0, 2).Value = c.Offset(0, 2).Value Then
+                If r.Value = c.Value Then
+                EntryFound = True
+                Else
+                    Count = Application.WorksheetFunction.CountIf(Adaptiv.Columns(1), c)
+                        If Count = 0 Then
+                         m = Replace(c.Value, "LGY", "")
+                            If m = r.Value Then
+                                EntryFound = True
+                            End If
+                        End If
+                End If
+            End If
+        Next c
+        If EntryFound = False Then
+            If Range("AD" & iLastrow + 6) = "" Then
+                Range("AD" & iLastrow + 6).Value = r.Offset(0, -2).Value
+                Range("AE" & iLastrow + 6).Value = r.Offset(0, -1).Value
+                Range("AF" & iLastrow + 6).Value = r.Value
+                Range("AG" & iLastrow + 6).Value = r.Offset(0, 1).Value
+                Range("AH" & iLastrow + 6).Value = r.Offset(0, 2).Value
+            Else:
+                Range("AD" & iLastrow + 5).End(xlDown).Offset(1, 0).Value = r.Offset(0, -2).Value
+                Range("AD" & iLastrow + 5).End(xlDown).Offset(0, 1).Value = r.Offset(0, -1).Value
+                Range("AD" & iLastrow + 5).End(xlDown).Offset(0, 2).Value = r.Value
+                Range("AD" & iLastrow + 5).End(xlDown).Offset(0, 3).Value = r.Offset(0, 1).Value
+                Range("AD" & iLastrow + 5).End(xlDown).Offset(0, 4).Value = r.Offset(0, 2).Value
+             End If
+        End If
+    End If
+Next r
+
+End Sub
+
+Sub FormatBookSheet()
+Dim TargetRange As Range
+Dim BorderIndex As Variant
+
+
+Range("AD2:AH2").Interior.Color = 9420794
+
+Range("AD" & iRowBook & ":" & "AH" & iRowBook).Interior.Color = 15261367
+Range("AD" & iRowCly & ":" & "AH" & iRowCly).Interior.Color = 15261367
+
+Range("A1:AJ1000").Font.Name = "Times New Roman"
+USD.Cells.HorizontalAlignment = xlCenter
+USD.Cells.Columns.AutoFit
+
+USD.Range("AG3:AG1000").NumberFormat = "#,##0"
+
+If Range("AD2") <> "" Then
+Set TargetRange = Range("AD2", Range("AD2").End(xlDown).Offset(0, 4))
+Else: Set TargetRange = Range("AD2:AH2")
+End If
+   For Each BorderIndex In Array(xlEdgeTop, xlEdgeLeft, xlEdgeBottom, xlEdgeRight, xlInsideHorizontal, xlInsideVertical)
+      With TargetRange.Borders(BorderIndex)
+         .Weight = xlThin
+         .ColorIndex = xlAutomatic
+      End With
+   Next BorderIndex
+If Range("AD" & iRowBook + 1) <> "" Then
+Set TargetRange = Range("AD" & iRowBook, Range("AD" & iRowBook).End(xlDown).Offset(0, 4))
+Else: Set TargetRange = Range("AD" & iRowBook & ":" & "AH" & iRowBook)
+End If
+   For Each BorderIndex In Array(xlEdgeTop, xlEdgeLeft, xlEdgeBottom, xlEdgeRight, xlInsideHorizontal, xlInsideVertical)
+      With TargetRange.Borders(BorderIndex)
+         .Weight = xlThin
+         .ColorIndex = xlAutomatic
+      End With
+   Next BorderIndex
+   
+If Range("AD" & iRowCly + 1) <> "" Then
+Set TargetRange = Range("AD" & iRowCly, Range("AD" & iRowCly).End(xlDown).Offset(0, 4))
+Else: Set TargetRange = Range("AD" & iRowCly & ":" & "AH" & iRowCly)
+End If
+
+   For Each BorderIndex In Array(xlEdgeTop, xlEdgeLeft, xlEdgeBottom, xlEdgeRight, xlInsideHorizontal, xlInsideVertical)
+      With TargetRange.Borders(BorderIndex)
+         .Weight = xlThin
+         .ColorIndex = xlAutomatic
+      End With
+   Next BorderIndex
+   
+
+End Sub
+
+
+
+Sub ClearRight()
+USD.Columns("AD:AJ").Clear
+End Sub
+
+Sub ClearLeftClypso()
+USD.Columns("H:X").Clear
+
+End Sub
+
+
